@@ -370,11 +370,37 @@ function PgEstoque({dados,usuario,onRefresh,setPage,setEntradaProdId}){
   const{produtos}=dados;
   const[busca,setBusca]=useState('');
   const[modal,setModal]=useState(false);
+  const[modalEdit,setModalEdit]=useState(false);
+  const[prodEdit,setProdEdit]=useState(null);
   const[form,setForm]=useState({nome:'',categoria:'Funilaria',unidade_compra:'L',unidade_consumo:'L',fator:'1',estoque:'',estoque_minimo:'',custo:'',venda:''});
+  const[formEdit,setFormEdit]=useState({});
   const[err,setErr]=useState('');
+  const[errEdit,setErrEdit]=useState('');
   const[loading,setLoading]=useState(false);
   const lista=useMemo(()=>produtos.filter(p=>p.nome.toLowerCase().includes(busca.toLowerCase())||p.categoria.toLowerCase().includes(busca.toLowerCase())),[produtos,busca]);
   const criticos=produtos.filter(p=>p.estoque<=p.estoque_minimo).length;
+
+  const abrirEdit=p=>{
+    setProdEdit(p);
+    setFormEdit({nome:p.nome,categoria:p.categoria,unidade_compra:p.unidade_compra,unidade_consumo:p.unidade_consumo,fator:String(p.fator||1),estoque_minimo:String(p.estoque_minimo||0),custo:String(p.custo),venda:String(p.venda)});
+    setErrEdit('');setModalEdit(true);
+  };
+
+  const salvarEdit=async()=>{
+    if(!formEdit.custo||isNaN(formEdit.custo)){setErrEdit('Informe o custo.');return;}
+    if(!formEdit.venda||isNaN(formEdit.venda)){setErrEdit('Informe o valor de venda.');return;}
+    if(parseFloat(formEdit.venda)<parseFloat(formEdit.custo)){setErrEdit('Valor de venda menor que o custo.');return;}
+    setLoading(true);setErrEdit('');
+    const{error}=await sb.from('produtos').update({
+      categoria:formEdit.categoria,
+      estoque_minimo:Math.round(parseFloat(formEdit.estoque_minimo)||0),
+      custo:parseFloat(formEdit.custo),
+      venda:parseFloat(formEdit.venda)
+    }).eq('id',prodEdit.id);
+    if(error){setErrEdit('Erro: '+error.message);setLoading(false);return;}
+    await registrarLog(usuario,'Produto editado',`${prodEdit.nome} — custo: ${brl(parseFloat(formEdit.custo))}, venda: ${brl(parseFloat(formEdit.venda))}`);
+    setModalEdit(false);setProdEdit(null);onRefresh();setLoading(false);
+  };
 
   const salvar=async()=>{
     if(!form.nome.trim()){setErr('Informe o nome.');return;}
@@ -442,7 +468,10 @@ function PgEstoque({dados,usuario,onRefresh,setPage,setEntradaProdId}){
           <td><span className="val-green">{mg}%</span></td>
           <td style={{fontWeight:700}}>{fmt(p.estoque)} <span style={{fontSize:11,color:'var(--gray-400)',fontWeight:400}}>{p.unidade_consumo}</span></td>
           <td><span className={`badge ${s.cls}`}>{s.txt}</span></td>
-          <td><button className="btn-del" onClick={()=>remover(p.id,p.nome)}>Remover</button></td>
+          <td style={{display:'flex',gap:6}}>
+            <button className="btn-del" style={{color:'var(--green)',borderColor:'#a8d5b5'}} onClick={()=>abrirEdit(p)}>Editar</button>
+            <button className="btn-del" onClick={()=>remover(p.id,p.nome)}>Remover</button>
+          </td>
         </tr>);})}
         </tbody>
       </table></div>}
@@ -467,6 +496,21 @@ function PgEstoque({dados,usuario,onRefresh,setPage,setEntradaProdId}){
       <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-ghost" onClick={()=>setModal(false)}>Cancelar</button>
         <button className="btn btn-primary" onClick={salvar} disabled={loading}>{loading&&<span className="spinner"/>}Salvar</button>
+      </div>
+    </Modal>}
+    {modalEdit&&prodEdit&&<Modal title={`Editar: ${prodEdit.nome}`} onClose={()=>setModalEdit(false)}>
+      {errEdit&&<div className="alert alert-err">{errEdit}</div>}
+      <div className="alert alert-info" style={{marginBottom:12}}>O nome e as unidades não podem ser alterados para preservar o histórico. Para corrigir o estoque atual use o Inventário.</div>
+      <div className="form-grid">
+        <div className="form-group"><label className="form-label">Categoria</label><select value={formEdit.categoria} onChange={e=>setFormEdit(f=>({...f,categoria:e.target.value}))}>{CATS.map(c=><option key={c}>{c}</option>)}</select></div>
+        <div className="form-group"><label className="form-label">Estoque mínimo</label><input type="number" min="0" value={formEdit.estoque_minimo} onChange={e=>setFormEdit(f=>({...f,estoque_minimo:e.target.value}))} placeholder="0"/></div>
+        <div className="form-group"><label className="form-label">💰 Custo (R$) *</label><input type="number" min="0" step="0.01" value={formEdit.custo} onChange={e=>setFormEdit(f=>({...f,custo:e.target.value}))}/></div>
+        <div className="form-group"><label className="form-label">🏷️ Venda (R$) *</label><input type="number" min="0" step="0.01" value={formEdit.venda} onChange={e=>setFormEdit(f=>({...f,venda:e.target.value}))}/></div>
+        {formEdit.custo&&formEdit.venda&&parseFloat(formEdit.venda)>0&&<div className="form-group full"><div style={{background:'#e6f7ec',border:'1px solid #a8d5b5',borderRadius:8,padding:'10px 14px',fontSize:13}}>Nova margem: <strong style={{color:'var(--green)'}}>{Math.round(((parseFloat(formEdit.venda)-parseFloat(formEdit.custo))/parseFloat(formEdit.venda))*100)}%</strong></div></div>}
+      </div>
+      <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
+        <button className="btn btn-ghost" onClick={()=>setModalEdit(false)}>Cancelar</button>
+        <button className="btn btn-primary" onClick={salvarEdit} disabled={loading}>{loading&&<span className="spinner"/>}Salvar alterações</button>
       </div>
     </Modal>}
   </div>);
