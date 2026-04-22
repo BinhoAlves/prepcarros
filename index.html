@@ -304,6 +304,56 @@ function CargoBuscavel({cargos,value,onChange}){
   );
 }
 
+// ── PRODUTO BUSCÁVEL ─────────────────────────────────────────
+function ProdutoBuscavel({produtos,value,onChange,apenasComEstoque}){
+  const[busca,setBusca]=useState('');
+  const[open,setOpen]=useState(false);
+  const ref=useRef(null);
+  const prodSel=produtos.find(p=>p.id===value);
+
+  useEffect(()=>{
+    if(prodSel)setBusca(prodSel.nome);
+    else setBusca('');
+  },[value]);
+
+  useEffect(()=>{
+    const f=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+    document.addEventListener('mousedown',f);return()=>document.removeEventListener('mousedown',f);
+  },[]);
+
+  const lista=useMemo(()=>{
+    const base=apenasComEstoque?produtos.filter(p=>p.estoque>0):produtos;
+    if(!busca.trim())return base.slice(0,20);
+    const b=busca.toLowerCase();
+    return base.filter(p=>p.nome.toLowerCase().includes(b)||p.categoria.toLowerCase().includes(b)).slice(0,20);
+  },[produtos,busca,apenasComEstoque]);
+
+  const sel=p=>{onChange(p.id);setBusca(p.nome);setOpen(false);};
+
+  const highlight=(text,q)=>{
+    if(!q)return text;
+    const i=text.toLowerCase().indexOf(q.toLowerCase());
+    if(i<0)return text;
+    return<>{text.slice(0,i)}<mark style={{background:'none',color:'var(--brand)',fontWeight:700}}>{text.slice(i,i+q.length)}</mark>{text.slice(i+q.length)}</>;
+  };
+
+  return(
+    <div className="cargo-wrap" ref={ref}>
+      <input className="cargo-input" value={busca} placeholder="Digite para buscar produto..." autoComplete="off"
+        onChange={e=>{setBusca(e.target.value);onChange('');setOpen(true);}}
+        onFocus={()=>setOpen(true)}/>
+      {open&&<div className="cargo-dropdown">
+        {lista.length===0
+          ?<div className="cargo-empty">Nenhum produto encontrado.</div>
+          :lista.map(p=><div key={p.id} className={`cargo-option${value===p.id?' sel':''}`} onMouseDown={()=>sel(p)}>
+            <div style={{fontWeight:600}}>{highlight(p.nome,busca)}</div>
+            <div style={{fontSize:11,color:'var(--gray-400)'}}>{p.categoria} · estoque: {fmt(p.estoque)} {p.unidade_consumo}</div>
+          </div>)}
+      </div>}
+    </div>
+  );
+}
+
 // ── FILTER BAR ────────────────────────────────────────────────
 function FilterBar({funcionarios,filFunc,setFilFunc,dataIni,setDataIni,dataFim,setDataFim,onFiltrar,onLimpar,ativo,count}){
   return(<>
@@ -599,9 +649,7 @@ function PgEntradas({dados,usuario,onRefresh,prodIdInicial,onProdIdInicialUsado}
     {modal&&<Modal title="Registrar Entrada" onClose={()=>setModal(false)}>
       {err&&<div className="alert alert-err">{err}</div>}
       <div className="form-group"><label className="form-label">Produto *</label>
-        <select value={form.prodId} onChange={e=>setForm(f=>({...f,prodId:e.target.value}))}>
-          <option value="">Selecione...</option>{produtos.map(p=><option key={p.id} value={p.id}>{p.nome} — estoque: {fmt(p.estoque)} {p.unidade_consumo}</option>)}
-        </select>
+        <ProdutoBuscavel produtos={produtos} value={form.prodId} onChange={id=>setForm(f=>({...f,prodId:id}))}/>
       </div>
       {(()=>{const pp=produtos.find(p=>p.id===form.prodId);const f2=pp?.fator||1;const qtdN=parseFloat(form.qtd)||0;return(<>
         <div className="form-group">
@@ -709,9 +757,8 @@ function PgConsumo({dados,usuario,onRefresh}){
         </select>
       </div>
       <div className="form-group"><label className="form-label">Produto *</label>
-        <select value={form.prodId} onChange={e=>setForm(f=>({...f,prodId:e.target.value}))}>
-          <option value="">Selecione...</option>{produtos.filter(p=>p.estoque>0).map(p=><option key={p.id} value={p.id}>{p.nome} — {fmt(p.estoque)} {p.unidade_consumo} disponíveis</option>)}
-        </select>
+        <ProdutoBuscavel produtos={produtos} value={form.prodId} onChange={id=>setForm(f=>({...f,prodId:id}))} apenasComEstoque={true}/>
+        <div className="hint">Mostra apenas produtos com estoque disponível</div>
       </div>
       <div className="form-group">
         <label className="form-label">Quantidade retirada{prod?` (em ${prod.unidade_consumo||prod.unidade_compra})`:' *'}</label>
